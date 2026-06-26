@@ -102,46 +102,50 @@ def render_volunteers() -> None:
         if pc3.button("▶", disabled=page>=total_pages, key="vol_next"):
             st.session_state["vol_page"]=page+1; st.rerun()
 
-        # DataFrame
+        # Table with per-row profile buttons
         start = (page-1)*PAGE_SIZE
         page_vols = vols[start:start+PAGE_SIZE]
-        rows = []
-        for v in page_vols:
-            s_lbl = vsl.get(v.status or "", v.status or "")
-            rows.append({
-                "id": str(v.id),
-                _t("รหัส อสม.","Code"):         v.volunteer_code,
-                _t("ชื่อ-นามสกุล","Full Name"): v.full_name,
-                _t("ตำแหน่ง","Position"):        v.position or "—",
-                _t("อำเภอ","District"):           v.district or "—",
-                _t("โทรศัพท์","Phone"):           v.phone or "—",
-                _t("สถานะ","Status"):             ("🟢 " if (v.status or "").lower()=="active" else "⚫ ") + s_lbl,
-            })
 
-        df = pd.DataFrame(rows)
-        st.dataframe(df.drop(columns=["id"]), use_container_width=True, hide_index=True)
+        # Header row
+        h1,h2,h3,h4,h5,h6,h7 = st.columns([1,3,2,2,2,1,1])
+        for col,lbl in zip([h1,h2,h3,h4,h5,h6,h7],[
+            _t("รหัส","Code"), _t("ชื่อ-นามสกุล","Full Name"),
+            _t("ตำแหน่ง","Position"), _t("อำเภอ","District"),
+            _t("โทรศัพท์","Phone"), _t("สถานะ","Status"), "👤"
+        ]):
+            col.markdown(f"**{lbl}**")
         st.divider()
 
-        # Action panel
-        st.markdown("#### " + _t("ดูโปรไฟล์ / แก้ไข / ลบ","View Profile / Edit / Delete"))
-        name_opts = {f"{v.volunteer_code}  {v.full_name}": str(v.id) for v in page_vols}
-        sel_lbl   = st.selectbox(_t("เลือกอาสาสมัคร","Select Volunteer"),
-                                  list(name_opts.keys()), key="vol_sel")
-        sel_id    = name_opts.get(sel_lbl)
+        for v in page_vols:
+            vid   = str(v.id)
+            s_lbl = vsl.get(v.status or "", v.status or "")
+            s_icon = "🟢" if (v.status or "").lower()=="active" else "⚫"
+            c1,c2,c3,c4,c5,c6,c7 = st.columns([1,3,2,2,2,1,1])
+            c1.markdown(f"`{v.volunteer_code}`")
+            c2.markdown(f"**{v.full_name}**")
+            c3.markdown(v.position or "—")
+            c4.markdown(v.district or "—")
+            c5.markdown(v.phone or "—")
+            c6.markdown(f"{s_icon} {s_lbl}")
+            if c7.button("👤", key=f"vp_{vid}",
+                         help=_t("ดูโปรไฟล์","View Profile")):
+                st.session_state["vol_profile_id"] = vid; st.rerun()
 
-        a1,a2,a3 = st.columns(3)
-        if a1.button("👤 "+_t("ดูโปรไฟล์","View Profile"),
-                     key="vol_do_prof", use_container_width=True):
-            if sel_id:
-                st.session_state["vol_profile_id"] = sel_id; st.rerun()
+        st.divider()
 
-        if a2.button("✏️ "+_t("แก้ไข","Edit"),
-                     key="vol_do_edit", use_container_width=True, type="primary"):
-            if sel_id: set_edit("vol", sel_id)
-
-        if a3.button("🗑️ "+_t("ลบ","Delete"),
-                     key="vol_do_del", use_container_width=True):
-            if sel_id: st.session_state["vol_pending_del"] = sel_id; st.rerun()
+        # Edit / Delete via expander
+        with st.expander("✏️ " + _t("แก้ไข / ลบอาสาสมัคร","Edit / Delete Volunteer")):
+            name_opts = {f"{v.volunteer_code}  {v.full_name}": str(v.id) for v in page_vols}
+            sel_lbl   = st.selectbox(_t("เลือกอาสาสมัคร","Select Volunteer"),
+                                      list(name_opts.keys()), key="vol_sel")
+            sel_id    = name_opts.get(sel_lbl)
+            a2,a3 = st.columns(2)
+            if a2.button("✏️ "+_t("แก้ไข","Edit"),
+                         key="vol_do_edit", use_container_width=True, type="primary"):
+                if sel_id: set_edit("vol", sel_id)
+            if a3.button("🗑️ "+_t("ลบ","Delete"),
+                         key="vol_do_del", use_container_width=True):
+                if sel_id: st.session_state["vol_pending_del"] = sel_id; st.rerun()
 
         if st.session_state.get("vol_pending_del") == sel_id and sel_id:
             st.warning(_t(f"⚠️ ยืนยันลบ '{sel_lbl}'?",f"⚠️ Confirm delete '{sel_lbl}'?"))

@@ -432,23 +432,61 @@ def render_elderly_monitoring() -> None:
 
     st.divider()
     st.subheader(_t("รายชื่อผู้สูงอายุ","Elderly Citizens List"))
+    st.caption(_t("กดปุ่ม 👤 เพื่อดูโปรไฟล์รายคน","Click 👤 to view individual profile"))
 
-    import pandas as pd
+    # Profile navigation
+    if st.session_state.get("cit_profile_id"):
+        from app.modules.citizens.profile import render_citizen_profile
+        render_citizen_profile(st.session_state["cit_profile_id"])
+        if st.button("← " + _t("กลับรายการผู้สูงอายุ","Back to Elderly List"), key="back_eld"):
+            st.session_state.pop("cit_profile_id", None); st.rerun()
+        return
+
+    # Fetch citizen codes via raw SQL (not in ORM model)
+    cit_codes = {}
+    try:
+        with get_sync_db() as _cdb:
+            _crows = _cdb.execute(text(
+                "SELECT id::text, COALESCE(citizen_code,'') FROM citizens "
+                "WHERE COALESCE(is_elderly,false)=true AND (is_deleted IS NULL OR is_deleted=false)"
+            )).fetchall()
+            cit_codes = {r[0]: r[1] for r in _crows}
+    except Exception: pass
+
     if elderly:
-        df = pd.DataFrame([{
-            _t("ชื่อ","Name"): c.full_name,
-            _t("เบอร์โทร","Phone"): c.phone or "",
-            _t("อยู่คนเดียว","Living Alone"): "✓" if hp and hp.lives_alone_profile else "",
-            _t("ติดบ้าน","Homebound"): "✓" if hp and hp.is_homebound else "",
-            "Has Caregiver": "✓" if hp and hp.has_caregiver else "✗",
-            "Chronic Conditions": sum([
-                hp.has_diabetes, hp.has_hypertension, hp.has_heart_disease
-            ]) if hp else 0,
-            _t("ต้องเยี่ยมบ้าน","Needs Visit"): "✓" if hp and hp.needs_home_visit else "",
-        } for c, hp in elderly])
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        # Table header
+        h1,h2,h3,h4,h5,h6,h7,h8 = st.columns([1,3,2,1,1,1,1,1])
+        for col,lbl in zip([h1,h2,h3,h4,h5,h6,h7,h8],[
+            _t("รหัส","Code"), _t("ชื่อ","Name"), _t("โทรศัพท์","Phone"),
+            _t("อยู่คนเดียว","Alone"), _t("ติดบ้าน","Homeb."),
+            _t("ผู้ดูแล","Caregiv."), _t("โรค","Cond."), "👤"
+        ]):
+            col.markdown(f"**{lbl}**")
+        st.divider()
+
+        for c, hp in elderly:
+            cid  = str(c.id)
+            code = cit_codes.get(cid, "—")
+            chronic = sum([
+                bool(hp.has_diabetes), bool(hp.has_hypertension),
+                bool(hp.has_heart_disease)
+            ]) if hp else 0
+            r1,r2,r3,r4,r5,r6,r7,r8 = st.columns([1,3,2,1,1,1,1,1])
+            r1.markdown(f"`{code}`")
+            r2.markdown(f"**{c.full_name}**")
+            r3.markdown(c.phone or "—")
+            r4.markdown("✓" if hp and hp.lives_alone_profile else "")
+            r5.markdown("✓" if hp and hp.is_homebound else "")
+            r6.markdown("✓" if hp and hp.has_caregiver else "✗")
+            r7.markdown(str(chronic) if chronic else "")
+            if r8.button("👤", key=f"eld_{cid}",
+                         help=_t("ดูโปรไฟล์","View Profile")):
+                st.session_state["cit_profile_id"] = cid
+                st.rerun()
+        st.caption(_t(f"ผู้สูงอายุทั้งหมด {len(elderly)} คน",
+                      f"Total: {len(elderly)} elderly citizens"))
     else:
-        st.info("No elderly citizens registered.")
+        st.info(_t("ยังไม่มีข้อมูลผู้สูงอายุ","No elderly citizens registered."))
 
 
 # ── Health Analytics ──────────────────────────────────────────────────────────

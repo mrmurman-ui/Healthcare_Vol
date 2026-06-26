@@ -102,9 +102,12 @@ def render_citizens() -> None:
     _ensure_columns()
     st.header(t("nav_citizens"))
 
-    # Profile view override
+    # Profile view — handle at top level regardless of tab
     if st.session_state.get("cit_profile_id"):
         render_citizen_profile(st.session_state["cit_profile_id"])
+        if st.button("← " + _t("กลับรายการ","Back to List"), key="back_from_prof_top"):
+            st.session_state.pop("cit_profile_id", None)
+            st.rerun()
         return
 
     init_crud_state("cit")
@@ -212,20 +215,52 @@ def _render_list(elderly_only: bool = False):
                 st.session_state.pop(k, None)
             st.rerun()
 
-    # ── Query ─────────────────────────────────────────────────────────────────
+    # ── Query — raw SQL to include citizen_code from extra DB column ─────────
     with get_sync_db() as db:
-        stmt = select(Citizen)
-        try: stmt = stmt.where(Citizen.is_deleted == False)
-        except: pass
-        if f_eld:    stmt = stmt.where(Citizen.is_elderly == True)
-        if f_dis:    stmt = stmt.where(Citizen.is_disabled == True)
-        if f_bed:    stmt = stmt.where(Citizen.is_bedridden == True)
-        if f_preg:   stmt = stmt.where(Citizen.is_pregnant == True)
-        if f_aln:    stmt = stmt.where(Citizen.is_living_alone == True)
-        if f_name:   stmt = stmt.where(Citizen.full_name.ilike(f"%{f_name}%"))
-        if f_gender: stmt = stmt.where(Citizen.gender == f_gender)
-        if f_occ:    stmt = stmt.where(Citizen.occupation.ilike(f"%{f_occ}%"))
-        citizens = db.execute(stmt.order_by(Citizen.full_name)).scalars().all()
+        where_parts = ["(is_deleted IS NULL OR is_deleted=false)"]
+        params: dict = {}
+        if f_eld:    where_parts.append("COALESCE(is_elderly,false)=true")
+        if f_dis:    where_parts.append("COALESCE(is_disabled,false)=true")
+        if f_bed:    where_parts.append("COALESCE(is_bedridden,false)=true")
+        if f_preg:   where_parts.append("COALESCE(is_pregnant,false)=true")
+        if f_aln:    where_parts.append("COALESCE(is_living_alone,false)=true")
+        if f_name:
+            where_parts.append("full_name ILIKE :fname")
+            params["fname"] = f"%{f_name}%"
+        if f_gender:
+            where_parts.append("gender = :gender")
+            params["gender"] = f_gender
+        if f_occ:
+            where_parts.append("occupation ILIKE :occ")
+            params["occ"] = f"%{f_occ}%"
+        _where = " AND ".join(where_parts)
+        _raw = db.execute(text(f"""
+            SELECT id, full_name, gender, date_of_birth, phone, occupation,
+                   COALESCE(is_elderly,false), COALESCE(is_disabled,false),
+                   COALESCE(is_bedridden,false), COALESCE(is_pregnant,false),
+                   COALESCE(is_living_alone,false),
+                   COALESCE(citizen_code,'')  AS citizen_code,
+                   COALESCE(village,'')       AS village,
+                   COALESCE(education,'')     AS education,
+                   COALESCE(house_number,'')  AS house_number,
+                   COALESCE(district,'')      AS district,
+                   COALESCE(national_id,'')   AS national_id
+            FROM citizens WHERE {_where}
+            ORDER BY COALESCE(citizen_code,'ZZZ'), full_name
+        """), params).fetchall()
+
+        class _C:
+            __slots__ = ("id","full_name","gender","date_of_birth","phone",
+                         "occupation","is_elderly","is_disabled","is_bedridden",
+                         "is_pregnant","is_living_alone","citizen_code","village",
+                         "education","house_number","district","national_id")
+            def __init__(self, r):
+                (self.id, self.full_name, self.gender, self.date_of_birth,
+                 self.phone, self.occupation, self.is_elderly, self.is_disabled,
+                 self.is_bedridden, self.is_pregnant, self.is_living_alone,
+                 self.citizen_code, self.village, self.education,
+                 self.house_number, self.district, self.national_id) = r
+        citizens = [_C(r) for r in _raw]
 
     # ── Post-query filters ────────────────────────────────────────────────────
     def _post(c):
@@ -296,90 +331,80 @@ def _render_list(elderly_only: bool = False):
     if pc3.button(_t("ถัดไป","Next")+" ▶", disabled=page>=total_pages, key=f"cit_next{suffix}"):
         st.session_state[page_key] = page + 1; st.rerun()
 
-    # ── Build DataFrame with Thai headers ────────────────────────────────────
-    start          = (page - 1) * PAGE_SIZE
-    page_citizens  = citizens[start : start + PAGE_SIZE]
+    # ── Table with per-row profile buttons ───────────────────────────────────
+    start         = (page - 1) * PAGE_SIZE
+    page_citizens = citizens[start : start + PAGE_SIZE]
 
-    rows = []
+    # Column headers
+    _h = st.columns([1, 3, 1, 1, 2, 2, 1, 1])
+    for _col, _lbl in zip(_h, [
+        _t("รหัส","Code"), _t("ชื่อ-นามสกุล","Full Name"),
+        _t("เพศ","Gender"), _t("อายุ","Age"),
+        _t("โทรศัพท์","Phone"), _t("อาชีพ","Occupation"),
+        _t("กลุ่ม","Flags"), "👤",
+    ]):
+        _col.markdown(f"**{_lbl}**")
+    st.divider()
+
     for c in page_citizens:
         age   = _calc_age(c.date_of_birth)
-        flags = (("👴" if c.is_elderly    else "") +
-                 ("♿" if c.is_disabled   else "") +
-                 ("🛏️" if c.is_bedridden  else "") +
-                 ("🤰" if c.is_pregnant   else "") +
+        flags = (("👴" if c.is_elderly     else "") +
+                 ("♿" if c.is_disabled    else "") +
+                 ("🛏️" if c.is_bedridden   else "") +
+                 ("🤰" if c.is_pregnant    else "") +
                  ("🏠" if c.is_living_alone else ""))
-        rows.append({
-            "id": str(c.id),
-            _t("รหัส","Code"):                 getattr(c,"citizen_code","") or "—",
-            _t("ชื่อ-นามสกุล","Full Name"):    c.full_name,
-            _t("เพศ","Gender"):                _gl.get(c.gender or "", c.gender or "—"),
-            _t("อายุ (ปี)","Age (yrs)"):       age if age is not None else "—",
-            _t("วันเกิด","DOB"):               fmt_date(c.date_of_birth),
-            _t("โทรศัพท์","Phone"):            c.phone or "—",
-            _t("อาชีพ","Occupation"):          c.occupation or "—",
-            _t("กลุ่มเปราะบาง","Flags"):       flags if flags else "—",
-            _t("หมู่บ้าน","Village"):          getattr(c,"village","") or "—",
-        })
+        cid  = str(c.id)
+        code = c.citizen_code or "—"
 
-    df         = pd.DataFrame(rows)
-    id_ser     = df["id"]
-    display_df = df.drop(columns=["id"])
-
-    st.dataframe(display_df, use_container_width=True, hide_index=True,
-                 column_config={
-                     _t("อายุ (ปี)","Age (yrs)"): st.column_config.NumberColumn(
-                         _t("อายุ (ปี)","Age (yrs)"), format="%d"),
-                 })
+        r1,r2,r3,r4,r5,r6,r7,r8 = st.columns([1, 3, 1, 1, 2, 2, 1, 1])
+        r1.markdown(f"`{code}`")
+        r2.markdown(f"**{c.full_name}**")
+        r3.markdown(_gl.get(c.gender or "", "—"))
+        r4.markdown(f"{age}" if age else "—")
+        r5.markdown(c.phone or "—")
+        r6.markdown((c.occupation or "—")[:20])
+        r7.markdown(flags if flags else "—")
+        if r8.button("👤", key=f"cp_{cid}{suffix}",
+                     help=_t("ดูโปรไฟล์","View Profile")):
+            st.session_state["cit_profile_id"] = cid
+            st.rerun()
 
     st.divider()
 
-    # ── Action panel — single dropdown, no per-row widget loop ───────────────
-    st.markdown("#### " + _t("👤 ดูโปรไฟล์ / แก้ไข / ลบ","👤 View Profile / Edit / Delete"))
-    st.caption(_t(
-        "เลือกชื่อจาก dropdown แล้วกดปุ่ม",
-        "Select from dropdown then click action button"
-    ))
+    # ── Edit / Delete via dropdown (below table) ──────────────────────────────
+    with st.expander("✏️ " + _t("แก้ไข / ลบประชาชน","Edit / Delete Citizen")):
+        sel_opts = {
+            f"{c.citizen_code or '—'}  {c.full_name}": str(c.id)
+            for c in page_citizens
+        }
+        sel_lbl = st.selectbox(_t("เลือกประชาชน","Select Citizen"),
+                               list(sel_opts.keys()), key=f"cit_sel{suffix}")
+        sel_id  = sel_opts.get(sel_lbl)
+        be1, be2 = st.columns(2)
+        if be1.button("✏️ " + _t("แก้ไข","Edit"),
+                      key=f"cit_edit_btn{suffix}", use_container_width=True, type="primary"):
+            if sel_id: set_edit("cit", sel_id)
+        if be2.button("🗑️ " + _t("ลบ","Delete"),
+                      key=f"cit_del_btn{suffix}", use_container_width=True):
+            if sel_id:
+                st.session_state["cit_pending_del"] = sel_id; st.rerun()
 
-    sel_opts = {
-        f"{getattr(c,'citizen_code','') or '—'}  {c.full_name}": str(c.id)
-        for c in page_citizens
-    }
-    sel_lbl = st.selectbox(
-        _t("เลือกประชาชน","Select Citizen"),
-        list(sel_opts.keys()), key=f"cit_sel{suffix}"
-    )
-    sel_id = sel_opts.get(sel_lbl)
-
-    ba1, ba2, ba3 = st.columns(3)
-    if ba1.button("👤 " + _t("ดูโปรไฟล์","View Profile"),
-                  key=f"cit_prof_btn{suffix}", use_container_width=True, type="primary"):
-        if sel_id:
-            st.session_state["cit_profile_id"] = sel_id
-            st.rerun()
-    if ba2.button("✏️ " + _t("แก้ไข","Edit"),
-                  key=f"cit_edit_btn{suffix}", use_container_width=True):
-        if sel_id: set_edit("cit", sel_id)
-    if ba3.button("🗑️ " + _t("ลบ","Delete"),
-                  key=f"cit_del_btn{suffix}", use_container_width=True):
-        if sel_id:
-            st.session_state["cit_pending_del"] = sel_id
-            st.rerun()
-
-    if st.session_state.get("cit_pending_del") and        st.session_state["cit_pending_del"] == sel_id:
-        st.warning(_t(f"⚠️ ยืนยันลบ '{sel_lbl}'?",f"⚠️ Confirm delete '{sel_lbl}'?"))
-        cy, cn = st.columns(2)
-        if cy.button("✅ " + _t("ยืนยัน","Yes, Delete"), key=f"cit_del_yes{suffix}"):
-            with get_sync_db() as db:
-                try:
-                    db.execute(text("UPDATE citizens SET is_deleted=true WHERE id=:id"),
-                               {"id": sel_id})
-                except Exception:
-                    obj = db.get(Citizen, sel_id)
-                    if obj: db.delete(obj)
-            st.session_state.pop("cit_pending_del", None)
-            st.success(_t("ลบสำเร็จ","Deleted.")); st.rerun()
-        if cn.button("❌ " + _t("ยกเลิก","Cancel"), key=f"cit_del_no{suffix}"):
-            st.session_state.pop("cit_pending_del", None); st.rerun()
+        if st.session_state.get("cit_pending_del") == sel_id and sel_id:
+            st.warning(_t(f"⚠️ ยืนยันลบ '{sel_lbl}'?",
+                          f"⚠️ Confirm delete '{sel_lbl}'?"))
+            cy, cn = st.columns(2)
+            if cy.button("✅ " + _t("ยืนยัน","Yes"), key=f"cit_del_yes{suffix}"):
+                with get_sync_db() as db:
+                    try:
+                        db.execute(text("UPDATE citizens SET is_deleted=true WHERE id=:id"),
+                                   {"id": sel_id})
+                    except Exception:
+                        obj = db.get(Citizen, sel_id)
+                        if obj: db.delete(obj)
+                st.session_state.pop("cit_pending_del", None)
+                st.success(_t("ลบสำเร็จ","Deleted.")); st.rerun()
+            if cn.button("❌ " + _t("ยกเลิก","Cancel"), key=f"cit_del_no{suffix}"):
+                st.session_state.pop("cit_pending_del", None); st.rerun()
 
     # ── Add button at BOTTOM ──────────────────────────────────────────────────
     st.divider()
@@ -397,6 +422,35 @@ def _render_elderly():
         "Search elderly citizens by name, age, chronic conditions, status and vulnerability."
     ))
     _render_list(elderly_only=True)
+
+    # Shortcut profile buttons for elderly (large prominent buttons)
+    st.divider()
+    st.markdown("#### 👤 " + _t("เข้าดูโปรไฟล์ผู้สูงอายุรายคน","View Elderly Citizen Profile"))
+    st.caption(_t(
+        "เลือกชื่อผู้สูงอายุแล้วกดปุ่มเพื่อดูรายละเอียด",
+        "Select an elderly citizen and click to view their profile"
+    ))
+    with get_sync_db() as _edb:
+        _erows = _edb.execute(text("""
+            SELECT id::text, COALESCE(citizen_code,'') as code, full_name
+            FROM citizens
+            WHERE COALESCE(is_elderly,false)=true
+              AND (is_deleted IS NULL OR is_deleted=false)
+            ORDER BY citizen_code, full_name
+            LIMIT 500
+        """)).fetchall()
+    if _erows:
+        _eopts = {f"{r[1] or '—'}  {r[2]}": r[0] for r in _erows}
+        _esel  = st.selectbox(
+            _t("เลือกผู้สูงอายุ","Select Elderly Citizen"),
+            list(_eopts.keys()), key="elderly_prof_sel"
+        )
+        if st.button("👤 " + _t("เปิดโปรไฟล์","Open Profile"),
+                     key="elderly_prof_btn", type="primary", use_container_width=True):
+            st.session_state["cit_profile_id"] = _eopts[_esel]
+            st.rerun()
+    else:
+        st.info(_t("ยังไม่พบข้อมูลผู้สูงอายุ","No elderly citizens found."))
 
 
 # ── Add / Edit form ───────────────────────────────────────────────────────────

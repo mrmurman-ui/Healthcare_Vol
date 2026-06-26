@@ -463,27 +463,38 @@ try:
     elif page_key == "households":
         from app.modules.households.page import render_households; render_households()
     elif page_key == "citizens":
-        # ── Ensure CA codes assigned (injected fix) ───────────────────────────
+        # ── Ensure CA codes assigned — direct psycopg2 (bypasses rollback issue) ─
         try:
-            from app.core.db_sync import get_sync_db as _gsd
-            from sqlalchemy import text as _t2
-            with _gsd() as _db:
-                _mr = _db.execute(_t2(
-                    "SELECT citizen_code FROM citizens WHERE citizen_code LIKE 'CA%' "
-                    "ORDER BY citizen_code DESC LIMIT 1"
-                )).fetchone()
-                _s = 1
-                if _mr and _mr[0]:
-                    try: _s = int(_mr[0][2:]) + 1
-                    except: pass
-                _nc = _db.execute(_t2(
-                    "SELECT id FROM citizens WHERE citizen_code IS NULL OR citizen_code=''"
-                )).fetchall()
-                for _i, _r in enumerate(_nc):
-                    _db.execute(_t2(
-                        "UPDATE citizens SET citizen_code=:c WHERE id=:id "
-                        "AND (citizen_code IS NULL OR citizen_code='')"
-                    ), {"c": f"CA{_s+_i:05d}", "id": str(_r[0])})
+            import re as _re
+            import os as _os
+            _env = _os.path.join(_os.path.dirname(__file__), "..", ".env")
+            _dburl = ""
+            for _line in open(_env, encoding="utf-8", errors="replace"):
+                if "DATABASE_URL_SYNC=" in _line or "DATABASE_URL=" in _line:
+                    _dburl = _line.split("=", 1)[1].strip().strip('"').strip("'")
+                    if "+asyncpg" not in _dburl: break
+            _dburl = _re.sub(r"postgresql\+psycopg2://", "postgresql://", _dburl)
+            _dburl = _re.sub(r"postgresql\+asyncpg://",  "postgresql://", _dburl)
+            import psycopg2 as _pg
+            _conn = _pg.connect(_dburl); _conn.autocommit = False; _cur = _conn.cursor()
+            # Add columns safely
+            for _col, _ct in [("citizen_code","VARCHAR(20)"),("national_id","VARCHAR(13)")]:
+                try:
+                    _cur.execute(f"ALTER TABLE citizens ADD COLUMN IF NOT EXISTS {_col} {_ct}")
+                    _conn.commit()
+                except Exception: _conn.rollback()
+            # Assign CA codes
+            _cur.execute("SELECT citizen_code FROM citizens WHERE citizen_code LIKE 'CA%' ORDER BY citizen_code DESC LIMIT 1")
+            _mr = _cur.fetchone(); _s = 1
+            if _mr and _mr[0]:
+                try: _s = int(_mr[0][2:]) + 1
+                except: pass
+            _cur.execute("SELECT id FROM citizens WHERE citizen_code IS NULL OR citizen_code=''")
+            _nc = _cur.fetchall()
+            for _i, _r in enumerate(_nc):
+                _cur.execute("UPDATE citizens SET citizen_code=%s WHERE id=%s AND (citizen_code IS NULL OR citizen_code='')",
+                             (f"CA{_s+_i:05d}", str(_r[0])))
+            _conn.commit(); _cur.close(); _conn.close()
         except Exception:
             pass
         from app.modules.citizens.page import render_citizens; render_citizens()
