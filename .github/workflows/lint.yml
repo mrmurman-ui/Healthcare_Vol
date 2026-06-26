@@ -1,0 +1,29 @@
+name: Lint
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install linters
+        run: pip install ruff black
+
+      - name: Run ruff
+        run: ruff check app/ --ignore E501,F401
+
+      - name: Check black formatting
+        run: black --check app/ --line-length 100

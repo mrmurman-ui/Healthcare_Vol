@@ -1,0 +1,47 @@
+# Web framework
+streamlit==1.40.0
+streamlit-folium==0.22.0
+
+# Database
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+psycopg2-binary==2.9.10
+alembic==1.14.0
+
+# Validation / config
+pydantic[email]==2.10.3
+email-validator==2.2.0
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+
+# Auth
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
+python-multipart==0.0.18
+
+# GIS / mapping
+folium==0.18.0
+
+# Charts
+plotly==5.24.1
+
+# Data / exports
+pandas==2.2.3
+numpy==2.1.3
+openpyxl==3.1.5
+reportlab==4.2.5
+Pillow==11.0.0
+
+# Utilities
+httpx==0.28.0
+faker==33.1.0
+
+# Scheduler (APScheduler — no Celery, no Redis)
+apscheduler==3.10.4
+
+# Testing
+pytest==8.3.4
+pytest-asyncio==0.24.0
+pytest-cov==6.0.0
+aiosqlite==0.20.0

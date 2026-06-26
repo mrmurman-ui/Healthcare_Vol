@@ -1,0 +1,27 @@
+[server]
+
+enableStaticServing = true
+
+headless = true
+port = 8501
+address = "127.0.0.1"
+fileWatcherType = "none"
+enableXsrfProtection = false
+
+[browser]
+gatherUsageStats = false
+serverAddress = "localhost"
+serverPort = 8501
+
+[theme]
+primaryColor = "#1e3a5f"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f0f4f8"
+textColor = "#1a1a2e"
+font = "sans serif"
+
+[logger]
+# Suppress noisy WebSocket disconnect messages (tornado.websocket.WebSocketClosedError)
+# These are normal browser disconnect events, not application errors
+level = "error"
+messageFormat = "%(asctime)s %(levelname)s %(name)s: %(message)s"
