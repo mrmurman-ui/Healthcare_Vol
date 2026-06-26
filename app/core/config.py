@@ -1,5 +1,15 @@
 from functools import lru_cache
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# ── Inject Streamlit Cloud secrets into environment ───────────────────────────
+try:
+    import streamlit as _st
+    for _k, _v in _st.secrets.items():
+        if isinstance(_v, str) and _k not in os.environ:
+            os.environ[_k] = _v
+except Exception:
+    pass
 
 
 class Settings(BaseSettings):

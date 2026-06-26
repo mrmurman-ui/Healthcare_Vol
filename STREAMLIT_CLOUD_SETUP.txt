@@ -1,0 +1,29 @@
+====================================================
+ STREAMLIT CLOUD DEPLOYMENT SETUP
+====================================================
+
+STEP 1: Push these files to GitHub first
+  - requirements.txt  → replaces old one
+  - app/core/config.py → reads Cloud secrets
+  - .streamlit/config.toml → Cloud-compatible config
+
+STEP 2: Go to https://share.streamlit.io
+  - Connect your GitHub repo: mrmurman-ui/Healthcare_Vol
+  - Main file path: app/main.py
+  - Python version: 3.12
+
+STEP 3: Add Secrets (IMPORTANT)
+  In Streamlit Cloud dashboard:
+  → Settings → Secrets → paste this:
+
+DATABASE_URL = "postgresql+asyncpg://postgres.jmmvjatilibasxpmfxbe:xLhS4aymjQomuvEu@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres?sslmode=require"
+DATABASE_URL_SYNC = "postgresql+psycopg2://postgres.jmmvjatilibasxpmfxbe:xLhS4aymjQomuvEu@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres?sslmode=require"
+SECRET_KEY = "b5jV3mxQup2Wm6hXENqRvw8MjSUGctgfLGYqYFiDmDE"
+JWT_SECRET_KEY = "o9boykhvsLXBND_zYDKcwKZyZ3HfmNIQUSTQbO1lc8dtKPnMf4eXpLHzYHz7VwL2zxmlVdcYYS0cOBN5dbXVbQ"
+JWT_ALGORITHM = "HS256"
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES = "60"
+SUPERADMIN_EMAIL = "admin@health.local"
+SUPERADMIN_PASSWORD = "ChangeMe123!"
+
+STEP 4: Click Deploy!
+====================================================

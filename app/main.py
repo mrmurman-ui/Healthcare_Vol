@@ -1,6 +1,18 @@
 # -*- coding: utf-8 -*-
 """MKI Community Health Platform — V2.60 Fixed"""
 from __future__ import annotations
+import sys, os
+
+# ── Streamlit Cloud path fix ──────────────────────────────────────────────────
+# On Cloud: working dir = /mount/src/healthcare_vol/
+# On local: working dir = Healthcare_Production_02/
+# Add both the repo root AND the parent of app/ to sys.path
+_THIS_DIR = os.path.dirname(os.path.abspath(__file__))   # .../app/
+_REPO_ROOT = os.path.dirname(_THIS_DIR)                   # .../healthcare_vol/
+for _p in [_REPO_ROOT, _THIS_DIR]:
+    if _p not in sys.path:
+        sys.path.insert(0, _p)
+
 import traceback
 import streamlit as st
 
