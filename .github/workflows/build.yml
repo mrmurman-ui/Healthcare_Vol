@@ -1,0 +1,55 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Verify imports
+        run: python -c "from app.core.config import settings; print('Config OK:', settings.APP_NAME)"
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./test.db
+          DATABASE_URL_SYNC: sqlite:///./test.db
+          JWT_SECRET_KEY: test-secret
+          SECRET_KEY: test-secret
+
+      - name: Verify all module imports
+        run: |
+          python -c "
+          import sys
+          sys.path.insert(0, '.')
+          modules = [
+            'app.modules.auth.session',
+            'app.modules.volunteers.model',
+            'app.modules.households.model',
+            'app.modules.citizens.model',
+            'app.modules.settings.service',
+            'app.modules.feature_flags.service',
+            'app.modules.versioning.service',
+            'app.shared.enums',
+          ]
+          for m in modules:
+            __import__(m)
+            print(f'OK: {m}')
+          print('All imports successful.')
+          "
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///./test.db
+          DATABASE_URL_SYNC: sqlite:///./test.db
+          JWT_SECRET_KEY: test-secret
+          SECRET_KEY: test-secret
